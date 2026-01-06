@@ -63,7 +63,6 @@ def download_dataset():
         zip_path.unlink()  # delete zip
         return
 
-    # Step 5: Extract needed files
     print("Dataset changed. Extracting needed files...")
     try:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:

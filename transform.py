@@ -24,7 +24,7 @@ def transform_and_save_data():
         vids['category_name'] = vids['category_id'].map(category_mapping)
 
         vids['engagement_score'] = vids['likes'] + vids['comment_count'] + vids['dislikes']
-        vids['rating_ratio'] = vids['likes'] / (vids['likes'] + vids['dislikes']).replace({0: 1})
+        #vids['rating_ratio'] = vids['likes'] / (vids['likes'] + vids['dislikes']).replace({0: 1})
 
         engagement_by_category = (
             vids
