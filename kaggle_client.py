@@ -1,126 +1,87 @@
-
 from kaggle.api.kaggle_api_extended import KaggleApi
 from pathlib import Path
 import zipfile
 import hashlib
 
-import json
-
-
-base_url = "https://www.kaggle.com/api/v1"
-owner_slug = "datasnaek"
-dataset_slug = "youtube-new"
-dataset_version = "115"
-csv_file_name = "GBvideos.csv"
-json_file_name = "GB_category_id.json"
+# Dataset constants
+OWNER_SLUG = "datasnaek"
+DATASET_SLUG = "youtube-new"
+CSV_FILE_NAME = "GBvideos.csv"
+JSON_FILE_NAME = "GB_category_id.json"
+FILES_TO_KEEP = {CSV_FILE_NAME, JSON_FILE_NAME}
 
 RAW_DIR = Path("data/raw")
-ZIP_PATH = RAW_DIR / "youtube-new.zip"  # the downloaded zip
-
-url = f"{base_url}/datasets/download/{owner_slug}/{dataset_slug}?datasetVersionNumber={dataset_version}"
-
-VERSION_FILE = Path("data/raw/dataset_version.txt")
-DATASET_REF = "datasnaek/youtube-new"
-
- #Set for O(1) lookups
-FILES_TO_KEEP = {"GBvideos.csv", "GB_category_id.json"}
-#hash file to track dataset changes
+ZIP_PATH = RAW_DIR / "youtube-new.zip"
 HASH_FILE = RAW_DIR / "dataset_hash.txt"
 
 class DatasetDownloadError(Exception):
     pass
 
-def download_dataset():
-    # Step 1: Authenticate
+
+# ----------------------------
+# Public function
+# ----------------------------
+def download_dataset() -> None:
+    """Authenticate, download, extract needed files, and update hash."""
+    api = _authenticate_kaggle()
+    zip_path = _download_if_needed(api)
+    if zip_path is None:
+        print("Dataset unchanged. Skipping download and extraction.")
+        return
+    _extract_needed_files(zip_path)
+    print("Pipeline completed successfully.")
+
+
+
+def _authenticate_kaggle() -> KaggleApi:
     try:
         api = KaggleApi()
         api.authenticate()
         print("Authenticated with Kaggle API")
+        return api
     except Exception as e:
         raise DatasetDownloadError("Failed to authenticate with Kaggle") from e
 
+
+def _download_if_needed(api: KaggleApi) -> Path | None:
+    """Download dataset zip only if hash differs. Returns zip_path or None if unchanged."""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Step 2: Download the dataset
     print("Downloading dataset...")
     try:
-        api.dataset_download_files("datasnaek/youtube-new", path=RAW_DIR)
+        api.dataset_download_files(f"{OWNER_SLUG}/{DATASET_SLUG}", path=RAW_DIR)
     except Exception as e:
         raise DatasetDownloadError("Failed to download dataset from Kaggle") from e
 
-    # Step 3: Find downloaded zip
     zip_files = list(RAW_DIR.glob("*.zip"))
     if not zip_files:
         raise DatasetDownloadError("No zip file downloaded")
     zip_path = zip_files[0]
 
-    # Step 4: Compute hash and check if extraction needed
     remote_hash = compute_file_hash(zip_path)
     local_hash = get_local_hash()
-
     if local_hash == remote_hash:
-        print("Dataset unchanged. Skipping extraction.")
-        zip_path.unlink()  # delete zip
-        return
+        zip_path.unlink()  # delete zip since nothing changed
+        return None
 
-    print("Dataset changed. Extracting needed files...")
-    try:
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_contents = set(zip_ref.namelist())
-            missing_files = FILES_TO_KEEP - zip_contents
-            if missing_files:
-                raise DatasetDownloadError(f"Missing files in zip: {missing_files}")
-            for f in FILES_TO_KEEP:
-                zip_ref.extract(f, RAW_DIR)
-    except zipfile.BadZipFile as e:
-        raise DatasetDownloadError("Corrupt zip file") from e
-
-    zip_path.unlink()
-    print("Extraction complete, zip deleted.")
-
-    # Step 6: Save new hash
+    print("Dataset changed. Proceeding with extraction.")
     save_local_hash(remote_hash)
-    print("Local dataset hash updated.")
-
-
-
-
-def _download_zip(api: KaggleApi) -> Path:
-    try:
-        RAW_DIR.mkdir(parents=True, exist_ok=True)
-        api.dataset_download_files(f"{owner_slug}/{dataset_slug}", path=RAW_DIR)
-
-        zip_files = list(RAW_DIR.glob("*.zip"))
-        if not zip_files:
-            raise DatasetDownloadError("Download completed but no zip file found")
-
-        return zip_files[0]
-
-    except Exception as e:
-        raise DatasetDownloadError("Failed to download dataset") from e
-
-
+    return zip_path
 
 
 def _extract_needed_files(zip_path: Path) -> None:
     try:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            print(zip_ref.namelist())
-
             zip_contents = set(zip_ref.namelist())
             missing_files = FILES_TO_KEEP - zip_contents
-
             if missing_files:
                 raise DatasetDownloadError(f"Missing files in zip: {missing_files}")
-
             for f in FILES_TO_KEEP:
                 zip_ref.extract(f, RAW_DIR)
-
         zip_path.unlink()
-
+        print("Extraction complete, zip deleted.")
     except zipfile.BadZipFile as e:
         raise DatasetDownloadError("Corrupt zip file") from e
-
 
 
 def compute_file_hash(file_path: Path, algorithm="md5") -> str:
@@ -130,11 +91,14 @@ def compute_file_hash(file_path: Path, algorithm="md5") -> str:
             h.update(chunk)
     return h.hexdigest()
 
+
 def get_local_hash() -> str | None:
     if HASH_FILE.exists():
         return HASH_FILE.read_text().strip()
     return None
 
+
 def save_local_hash(file_hash: str) -> None:
     HASH_FILE.parent.mkdir(parents=True, exist_ok=True)
     HASH_FILE.write_text(file_hash)
+    print(f"Saved local dataset hash: {file_hash}")
