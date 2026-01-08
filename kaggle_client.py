@@ -18,9 +18,6 @@ class DatasetDownloadError(Exception):
     pass
 
 
-# ----------------------------
-# Public function
-# ----------------------------
 def download_dataset() -> None:
     """Authenticate, download, extract needed files, and update hash."""
     api = _authenticate_kaggle()
